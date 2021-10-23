@@ -51,6 +51,7 @@ var UNFOCUSED_OPACITY = 255;
 var FOCUSED_OPACITY = 255;
 var DESATURATE_ICONS = false;
 var FAVORITES_FIRST = false;
+var POSITION_SORT = false;
 var DISPLAY_ACTIVITIES = false;
 var DISPLAY_APP_GRID = true;
 var DISPLAY_PLACES_ICON = true;
@@ -308,6 +309,8 @@ class WorkspacesBar extends PanelMenu.Button {
 			if (FAVORITES_FIRST) {
 				this.favorites_list = AppFavorites.getAppFavorites().getFavorites();
 				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_favorites_first.bind(this));
+			} else if (POSITION_SORT) {
+				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_by_position.bind(this));
 			} else {
 	        	this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows);
 			}
@@ -473,6 +476,43 @@ class WorkspacesBar extends PanelMenu.Button {
 		if (!this.w1_is_favorite && this.w2_is_favorite) {
 			return 1;
 		}
+	}
+
+	// sort windows by position; ported from tint2.
+	// https://gitlab.com/o9000/tint2/-/blob/master/src/taskbar/taskbar.c#L693
+	_sort_windows_by_position(w1, w2) {
+		let r1 = w1.get_frame_rect(), r2 = w2.get_frame_rect();
+		// If a window has the same coordinates and size as the other,
+		// they are considered to be equal in the comparison.
+		if ((r1.x == r2.x) && (r1.y == r2.y) && (r1.width == r2.width) && (r1.height == r2.height)) {
+			return 0;
+		}
+
+		// If a window is completely contained in another,
+		// then it is considered to come after (to the right/bottom) of the other.
+		if (this._contained_within(r1, r2))
+			return -1;
+		if (this._contained_within(r2, r1))
+			return 1;
+
+		// Compare centers
+		let a_horiz_c = r1.x + r1.width / 2;
+		let b_horiz_c = r2.x + r2.width / 2;
+		let a_vert_c = r1.y + r1.height / 2;
+		let b_vert_c = r2.y + r2.height / 2;
+		if (a_horiz_c != b_horiz_c) {
+			return a_horiz_c - b_horiz_c;
+		}
+		return a_vert_c - b_vert_c;
+	}
+
+	// check if one frame_rect is contained within another. 
+	_contained_within(r1, r2) {
+		if ((r1.x <= r2.x) && (r1.y <= r2.y) && (r1.x + r1.width >= r2.x + r2.width) &&
+			(r1.y + r1.height >= r2.y + r2.height)) {
+			return true;
+		}
+		return false;
 	}
 
     // toggle or show overview
@@ -696,6 +736,7 @@ class Extension {
 		FOCUSED_OPACITY = this.settings.get_int('focused-opacity');
 		DESATURATE_ICONS = this.settings.get_boolean('desaturate-icons');
 		FAVORITES_FIRST = this.settings.get_boolean('favorites-first');
+		POSITION_SORT = this.settings.get_boolean('position-sort');
 		DISPLAY_ACTIVITIES = this.settings.get_boolean('display-activities');
 		DISPLAY_APP_GRID = this.settings.get_boolean('display-app-grid');
 		DISPLAY_PLACES_ICON = this.settings.get_boolean('display-places-icon');

@@ -153,6 +153,7 @@ function buildPrefsWidget() {
     make_item('Tasks: right-click to show window thumbnail (true)', 'right-click', 'b');
     make_item('Tasks: middle-click to close window (true)', 'middle-click', 'b');
     make_item('Tasks: sort favorites first (false)', 'favorites-first', 'b');
+    make_item('Tasks: sort by position (false)', 'position-sort', 'b');
 	
     // return widget
     return this.prefsWidget;

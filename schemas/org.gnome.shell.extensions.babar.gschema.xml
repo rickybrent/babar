@@ -109,6 +109,10 @@
 		<key name="favorites-first" type="b">
 			<default>false</default>
 		</key>
+		
+		<key name="position-sort" type="b">
+			<default>false</default>
+		</key>
 
 	</schema>
 </schemalist>
