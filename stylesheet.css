@@ -102,12 +102,18 @@
 .workspace-box-inactive-flat {
   margin-left: 1px;
 }
+.workspace-seperator-active-flat,
+.workspace-seperator-inactive-flat {
+  margin-right: 1px;
+}
 
+.workspace-seperator-inactive-flat,
 .workspace-box-inactive-flat,
 .window-workspace-inactive-flat {
   background-color: rgba(127, 127, 127, 0.18);
 }
 
+.workspace-seperator-active-flat,
 .workspace-box-active-flat,
 .window-workspace-active-flat {
   background-color: rgba(127, 127, 127, 0.42);

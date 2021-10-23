@@ -62,6 +62,7 @@ var DISPLAY_TASKS = true;
 var DISPLAY_APP_MENU = false;
 var DISPLAY_DASH = true;
 var DISPLAY_WORKSPACES_THUMBNAILS = true;
+var MIN_TASKS_PER_WORKSPACE = 0;
 
 let extension;
 
@@ -314,12 +315,17 @@ class WorkspacesBar extends PanelMenu.Button {
 			} else {
 	        	this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows);
 			}
+			let task_total = 0;
 	        for (let window_index = 0; window_index < this.ws_current.windows.length; ++window_index) {
 	        	this.window = this.ws_current.windows[window_index];
 	        	if (this.window && !this.window.is_skip_taskbar() && this.window_type_whitelist.includes(this.window.get_window_type())) {
 	        	    this._create_window_button(ws_index, this.window, button_type);
+					if (!this.window.is_on_all_workspaces()) {
+						++task_total;
+					}
 	        	}
 	        }
+			this._create_workspace_seperator(ws_index, MIN_TASKS_PER_WORKSPACE - task_total, button_type);
 		}
     }
     
@@ -538,7 +544,9 @@ class WorkspacesBar extends PanelMenu.Button {
 
     // toggle or show overview
     _toggle_ws(widget, event, ws_index) {
-		if (WORKSPACES_RIGHT_CLICK) {
+		if (ws_index < 0) {
+			Main.overview.toggle();
+		} else if (WORKSPACES_RIGHT_CLICK) {
 			// left click: show workspace
 			if (event.get_button() == 1) {
 				WM.get_workspace_by_index(ws_index).activate(global.get_current_time());
@@ -768,6 +776,7 @@ class Extension {
 		DISPLAY_APP_MENU = this.settings.get_boolean('display-app-menu');
 		DISPLAY_DASH = this.settings.get_boolean('display-dash');
 		DISPLAY_WORKSPACES_THUMBNAILS = this.settings.get_boolean('display-workspaces-thumbnails');
+		MIN_TASKS_PER_WORKSPACE = this.settings.get_int('min-tasks-per-workspace');
     }
     
     // restart extension after settings changed

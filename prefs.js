@@ -147,7 +147,8 @@ function buildPrefsWidget() {
     make_item('Applications grid icon (view-app-grid-symbolic)', 'app-grid-icon-name', 's');
     make_item('Places icon (folder-symbolic)', 'places-icon-name', 's');
     make_item('Favorites icon (starred-symbolic)', 'favorites-icon-name', 's');
-    
+    make_item('Minumim Tasks per Workspace', 'min-tasks-per-workspace', 'i', 0, 10);
+
     make_section_title('Behavior (default value)');
     
 	make_item('Workspaces: left click to show, right-click to show or toggle overview (false)', 'workspaces-right-click', 'b');
