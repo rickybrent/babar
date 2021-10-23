@@ -88,3 +88,40 @@
   border-radius: 2px;
   /*background-color: rgba(204, 204, 204, 0.7);*/
 }
+
+/* Flat style changes */
+.window-workspace-inactive-flat,
+.window-workspace-active-flat,
+.window-focused-workspace-active-flat {
+  padding:0px 4px;
+  margin:0px;
+  border:0px;
+}
+
+.workspace-box-active-flat,
+.workspace-box-inactive-flat {
+  margin-left: 1px;
+}
+
+.workspace-box-inactive-flat,
+.window-workspace-inactive-flat {
+  background-color: rgba(127, 127, 127, 0.18);
+}
+
+.workspace-box-active-flat,
+.window-workspace-active-flat {
+  background-color: rgba(127, 127, 127, 0.42);
+}
+.window-focused-workspace-active-flat {
+  background-color: rgba(127, 127, 127, 0.8);
+}
+
+.workspace-active-flat {
+  color: rgba(255, 255, 255, 0.8);
+  font-size:smaller;
+}
+
+.workspace-inactive-flat {
+  color: rgba(255, 255, 255, 0.3);
+  font-size:smaller;
+}

@@ -44,6 +44,7 @@ var FAVORITES_ICON_NAME = 'starred-symbolic';
 var FALLBACK_ICON_NAME = 'applications-system-symbolic';
 var ICON_SIZE = 18;
 var ROUNDED_WORKSPACES_BUTTONS = false;
+var FLAT_WORKSPACES_BUTTONS = false;
 var TOOLTIP_VERTICAL_PADDING = 10;
 var THUMBNAIL_MAX_SIZE = 25;
 var HIDDEN_OPACITY = 127;
@@ -265,6 +266,13 @@ class WorkspacesBar extends PanelMenu.Button {
     	// get number of workspaces
         this.ws_count = WM.get_n_workspaces();
         this.active_ws_index = WM.get_active_workspace_index();
+
+		let button_type = "squared";
+		if (FLAT_WORKSPACES_BUTTONS) {
+			button_type = "flat";
+		} else if (ROUNDED_WORKSPACES_BUTTONS) {
+			button_type = "rounded";
+		}
         		
 		// display all current workspaces and tasks buttons
         for (let ws_index = 0; ws_index < this.ws_count; ++ws_index) {
@@ -274,18 +282,12 @@ class WorkspacesBar extends PanelMenu.Button {
 			let ws_box_label = new St.Label({y_align: Clutter.ActorAlign.CENTER});
 			
 			// rounded buttons option
-			if (!ROUNDED_WORKSPACES_BUTTONS) {
-				if (ws_index == this.active_ws_index) {
-					ws_box_label.style_class = 'workspace-active-squared';
-				} else {
-					ws_box_label.style_class = 'workspace-inactive-squared';
-				}
+			if (ws_index == this.active_ws_index) {
+				ws_box_label.style_class = 'workspace-active-' + button_type;
+				ws_box.style_class = 'workspace-box-active-' + button_type;
 			} else {
-				if (ws_index == this.active_ws_index) {
-					ws_box_label.style_class = 'workspace-active-rounded';
-				} else {
-					ws_box_label.style_class = 'workspace-inactive-rounded';
-				}
+				ws_box_label.style_class = 'workspace-inactive-' + button_type;
+				ws_box.style_class = 'workspace-box-inactive-' + button_type;
 			}
 			
 			// workspace numbered label
@@ -309,22 +311,33 @@ class WorkspacesBar extends PanelMenu.Button {
 			if (FAVORITES_FIRST) {
 				this.favorites_list = AppFavorites.getAppFavorites().getFavorites();
 				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_favorites_first.bind(this));
-			} else if (POSITION_SORT) {
-				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_by_position.bind(this));
 			} else {
 	        	this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows);
 			}
 	        for (let window_index = 0; window_index < this.ws_current.windows.length; ++window_index) {
 	        	this.window = this.ws_current.windows[window_index];
 	        	if (this.window && !this.window.is_skip_taskbar() && this.window_type_whitelist.includes(this.window.get_window_type())) {
-	        		this._create_window_button(ws_index, this.window);
+	        	    this._create_window_button(ws_index, this.window, button_type);
 	        	}
 	        }
 		}
     }
     
-    // create window button ; ws = workspace, w = window
-    _create_window_button(ws_index, w) {    	
+	_create_workspace_seperator(ws_index, size, button_type) {
+		let box = new WorkspaceButton();
+		if (ws_index == this.active_ws_index) {
+			box.style_class = 'workspace-seperator-active-' + button_type;
+		} else {
+			box.style_class = 'workspace-seperator-inactive-' + button_type;
+		}
+		box.number = ws_index;
+		box.set_style('min-width: '+ ((size > 0 ? size : 0) * (8 + ICON_SIZE)) + 'px');
+		box.connect('button-release-event', (widget, event) => this._toggle_ws(widget, event, ws_index));
+		this.ws_bar.add_child(box);
+	}
+
+    // create window button ; ws = workspace, w = window, button_type
+	_create_window_button(ws_index, w, button_type) {
         // windows on all workspaces have to be displayed only once
     	if (!w.is_on_all_workspaces() || ws_index == 0) {
 		    // create button
@@ -347,16 +360,24 @@ class WorkspacesBar extends PanelMenu.Button {
 				w_box_icon.add_effect(this.desaturate);
 			}
 		    
+			let window_workspace_class = 'window-workspace-inactive-' + button_type;
+			if (ws_index == WM.get_active_workspace_index() && !w.is_on_all_workspaces()) {
+				if (w.has_focus()) {
+					window_workspace_class = 'window-focused-workspace-active-' + button_type;
+				} else {
+					window_workspace_class = 'window-workspace-active-' + button_type;
+				}
+			}
 			// set icon style and opacity following window state
 		    if (w.is_hidden()) {
-				w_box.style_class = 'window-hidden';
+				w_box.style_class = 'window-hidden ' +  window_workspace_class;
 				w_box_icon.set_opacity(HIDDEN_OPACITY);
 		    } else {
 				if (w.has_focus()) {
-					w_box.style_class = 'window-focused';
+					w_box.style_class = 'window-focused ' + window_workspace_class;
 					w_box_icon.set_opacity(FOCUSED_OPACITY);
 				} else {
-					w_box.style_class = 'window-unfocused';
+					w_box.style_class = 'window-unfocused ' + window_workspace_class;
 					w_box_icon.set_opacity(UNFOCUSED_OPACITY);
 				}
 		    }
@@ -730,6 +751,7 @@ class Extension {
 		ICON_SIZE = this.settings.get_int('icon-size');
 		THUMBNAIL_MAX_SIZE = this.settings.get_int('thumbnail-max-size');
 		ROUNDED_WORKSPACES_BUTTONS = this.settings.get_boolean('rounded-workspaces-buttons');
+		FLAT_WORKSPACES_BUTTONS = this.settings.get_boolean('flat-workspaces-buttons');
 		TOOLTIP_VERTICAL_PADDING = this.settings.get_int('tooltip-vertical-padding');
 		HIDDEN_OPACITY = this.settings.get_int('hidden-opacity');
 		UNFOCUSED_OPACITY = this.settings.get_int('unfocused-opacity');

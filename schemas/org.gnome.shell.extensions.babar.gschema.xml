@@ -34,6 +34,10 @@
 			<default>false</default>
 		</key>
 		
+		<key name="flat-workspaces-buttons" type="b">
+			<default>false</default>
+		</key>
+		
 		<key name="tooltip-vertical-padding" type="i">
 			<default>10</default>
 		</key>
