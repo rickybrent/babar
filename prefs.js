@@ -142,7 +142,7 @@ function buildPrefsWidget() {
     make_item('Rounded workspaces icons (false)', 'rounded-workspaces-buttons', 'b');
     make_item('Remove color from tasks icons (false)', 'desaturate-icons', 'b');
     make_item('Task icon size (18: Shell <= 3.38, 20: Shell >= 40)', 'icon-size', 'i', 8, 64);
-	make_item('Thumbnail maximum size % (25)', 'thumbnail-max-size', 'i', 10, 100);
+    make_item('Thumbnail maximum size % (25)', 'thumbnail-max-size', 'i', 10, 100);
     make_item('Applications grid icon (view-app-grid-symbolic)', 'app-grid-icon-name', 's');
     make_item('Places icon (folder-symbolic)', 'places-icon-name', 's');
     make_item('Favorites icon (starred-symbolic)', 'favorites-icon-name', 's');
@@ -152,7 +152,7 @@ function buildPrefsWidget() {
 	make_item('Workspaces: left click to show, right-click to show or toggle overview (false)', 'workspaces-right-click', 'b');
     make_item('Tasks: right-click to show window thumbnail (true)', 'right-click', 'b');
     make_item('Tasks: middle-click to close window (true)', 'middle-click', 'b');
-	make_item('Tasks: sort favorites first (false)', 'favorites-first', 'b');
+    make_item('Tasks: sort favorites first (false)', 'favorites-first', 'b');
 	
     // return widget
     return this.prefsWidget;
