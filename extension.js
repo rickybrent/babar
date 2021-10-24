@@ -891,6 +891,7 @@ class Extension {
 		if (DISPLAY_TASKS) {
 			this.workspaces_bar = new WorkspacesBar();
 			Main.panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bar, 5, 'left');
+			this.workspaces_bar.set_track_hover(false); // disable hover effect for gnome 40
 		}
 		
 		// AppMenu
