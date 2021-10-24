@@ -148,6 +148,7 @@ function buildPrefsWidget() {
     make_item('Places icon (folder-symbolic)', 'places-icon-name', 's');
     make_item('Favorites icon (starred-symbolic)', 'favorites-icon-name', 's');
     make_item('Minumim Tasks per Workspace', 'min-tasks-per-workspace', 'i', 0, 10);
+    make_item('All-workspaces Label', 'all-workspaces-label', 's');
 
     make_section_title('Behavior (default value)');
     

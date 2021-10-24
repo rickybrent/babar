@@ -63,6 +63,7 @@ var DISPLAY_APP_MENU = false;
 var DISPLAY_DASH = true;
 var DISPLAY_WORKSPACES_THUMBNAILS = true;
 var MIN_TASKS_PER_WORKSPACE = 0;
+var ALL_WORKSPACES_LABEL = '';
 
 let extension;
 
@@ -326,6 +327,17 @@ class WorkspacesBar extends PanelMenu.Button {
 	        	}
 	        }
 			this._create_workspace_seperator(ws_index, MIN_TASKS_PER_WORKSPACE - task_total, button_type);
+		}
+		if (ALL_WORKSPACES_LABEL) {
+			let ws_box = new WorkspaceButton();
+			ws_box.number = -1;
+			let ws_box_label = new St.Label({ y_align: Clutter.ActorAlign.CENTER });
+			ws_box_label.style_class = 'workspace-inactive-' + button_type;
+			ws_box.style_class = 'workspace-box-inactive-' + button_type;
+			ws_box_label.set_text(" " + ALL_WORKSPACES_LABEL + " ");
+			ws_box.set_child(ws_box_label);
+			ws_box.connect('button-release-event', (widget, event) => this._toggle_ws(widget, event, -1));
+			this.ws_bar.insert_child_at_index(ws_box, 0);
 		}
     }
     
@@ -777,6 +789,7 @@ class Extension {
 		DISPLAY_DASH = this.settings.get_boolean('display-dash');
 		DISPLAY_WORKSPACES_THUMBNAILS = this.settings.get_boolean('display-workspaces-thumbnails');
 		MIN_TASKS_PER_WORKSPACE = this.settings.get_int('min-tasks-per-workspace');
+		ALL_WORKSPACES_LABEL = this.settings.get_string('all-workspaces-label');
     }
     
     // restart extension after settings changed
