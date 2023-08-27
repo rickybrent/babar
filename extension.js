@@ -59,6 +59,7 @@ var DISPLAY_PLACES_ICON = true;
 var DISPLAY_FAVORITES = true;
 var DISPLAY_WORKSPACES = true;
 var DISPLAY_TASKS = true;
+var TASKS_POSITION = 'left';
 var DISPLAY_APP_MENU = false;
 var DISPLAY_DASH = true;
 var DISPLAY_WORKSPACES_THUMBNAILS = true;
@@ -166,6 +167,160 @@ class FavoritesMenu extends PanelMenu.Button {
 	}
 });
 
+
+class WindowContextMenu extends PopupMenu.PopupMenu {
+	constructor(source, w_box, metaWindow) {
+		super(w_box, 0.5, St.Side.BOTTOM);
+		console.log("rbrent start");
+		this.actor.add_style_class_name('window-menu');
+		Main.layoutManager.uiGroup.add_actor(this.actor);
+		this.window_tracker = Shell.WindowTracker.get_default();
+		this.actor.hide();
+		this.actor.connect('destroy', this._onDestroy.bind(this));
+		source.connect('destroy', this._onDestroy.bind(this));
+		this._buildMenu(metaWindow);
+	}
+
+	_buildMenu(metaWindow) {
+
+		this._metaWindow = metaWindow;
+		/* ---------------------------------------------------------------- */
+		//this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem(metaWindow.get_title()))
+
+		this._newWindowItem = new PopupMenu.PopupMenuItem(_('New Window'));
+		this._newWindowItem.connect('activate', () => {
+			let app = this.window_tracker.get_window_app(metaWindow);
+			app.open_new_window(-1);
+			Main.overview.hide();
+		});
+		this.addMenuItem(this._newWindowItem);
+
+		/* ---------------------------------------------------------------- */
+		this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
+
+		this._minimizeItem = new PopupMenu.PopupMenuItem('');
+		this._minimizeItem.connect('activate', () => {
+			if (this._metaWindow.minimized)
+				this._metaWindow.unminimize();
+			else
+				this._metaWindow.minimize();
+		});
+		this.addMenuItem(this._minimizeItem);
+		this._notifyMinimizedId = this._metaWindow.connect(
+			'notify::minimized', this._updateMinimizeItem.bind(this));
+		this._updateMinimizeItem();
+
+		this._maximizeItem = new PopupMenu.PopupMenuItem('');
+		this._maximizeItem.connect('activate', () => {
+			if (this._metaWindow.get_maximized() === Meta.MaximizeFlags.BOTH)
+				this._metaWindow.unmaximize(Meta.MaximizeFlags.BOTH);
+			else
+				this._metaWindow.maximize(Meta.MaximizeFlags.BOTH);
+		});
+		this.addMenuItem(this._maximizeItem);
+		this._notifyMaximizedHId = this._metaWindow.connect(
+			'notify::maximized-horizontally',
+			this._updateMaximizeItem.bind(this));
+		this._notifyMaximizedVId = this._metaWindow.connect(
+			'notify::maximized-vertically',
+			this._updateMaximizeItem.bind(this));
+		this._updateMaximizeItem();
+
+
+		this._moveItem = new PopupMenu.PopupMenuItem(_('Move'));
+		this._moveItem.connect('activate', (_, event)  => {
+			this._grabAction(this._metaWindow, Meta.GrabOp.KEYBOARD_MOVING, event.get_time());
+		});
+		this.addMenuItem(this._moveItem);
+
+		this._resizeItem = new PopupMenu.PopupMenuItem(_('Resize'));
+		this._resizeItem.connect('activate', (_, event)  => {
+			this._grabAction(this._metaWindow, Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN, event.get_time());
+		});
+		this.addMenuItem(this._resizeItem);
+
+		this._alwaysOnTopItem = new PopupMenu.PopupMenuItem(_('Always on Top'));
+		this._alwaysOnTopItem.connect('activate', () => {
+            if (this._metaWindow.is_above())
+                this._metaWindow.unmake_above();
+            else
+                this._metaWindow.make_above();
+			this._updateAlwaysOnTopItem();
+		});
+		this.addMenuItem(this._alwaysOnTopItem);
+		this._updateAlwaysOnTopItem();
+
+		/* ---------------------------------------------------------------- */
+		this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
+
+		this._closeItem = new PopupMenu.PopupMenuItem(_('Close'));
+		this._closeItem.connect('activate', () => {
+			this._metaWindow.delete(global.get_current_time());
+		});
+		this.addMenuItem(this._closeItem);
+
+		this.connect('open-state-changed', (o, b, d) => {
+			console.log("rbrent, isopen", this.isOpen);
+			if (!this.isOpen)
+				return;
+			Main.panel.menuManager.addMenu(this);
+			//Main.layoutManager.uiGroup.add_actor(this.actor);
+
+			this._minimizeItem.setSensitive(this._metaWindow.can_minimize());
+			this._maximizeItem.setSensitive(this._metaWindow.can_maximize());
+			this._moveItem.setSensitive(this._metaWindow.allows_move());
+			this._resizeItem.setSensitive(this._metaWindow.allows_resize());
+			this._alwaysOnTopItem.setSensitive(this._metaWindow.get_maximized() != Meta.MaximizeFlags.BOTH);
+			this._closeItem.setSensitive(this._metaWindow.can_close());
+		});
+	}
+
+	_updateMinimizeItem() {
+		this._minimizeItem.label.text = this._metaWindow.minimized
+			? _('Unminimize') : _('Minimize');
+	}
+
+	_updateMaximizeItem() {
+		let maximized = this._metaWindow.maximized_vertically &&
+			this._metaWindow.maximized_horizontally;
+		this._maximizeItem.label.text = maximized
+			? _('Unmaximize') : _('Maximize');
+	}
+
+	_updateAlwaysOnTopItem() {
+		if (this._metaWindow.is_above())
+            this._alwaysOnTopItem.setOrnament(PopupMenu.Ornament.CHECK);
+		else
+            this._alwaysOnTopItem.setOrnament(PopupMenu.Ornament.NONE);
+	}
+
+    _grabAction(window, grabOp, time) {
+        if (global.display.get_grab_op() == Meta.GrabOp.NONE) {
+            window.begin_grab_op(grabOp, true, time);
+            return;
+        }
+
+        let waitId = 0;
+        let id = global.display.connect('grab-op-end', display => {
+            display.disconnect(id);
+            GLib.source_remove(waitId);
+
+            window.begin_grab_op(grabOp, true, time);
+        });
+
+        waitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            global.display.disconnect(id);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+	_onDestroy() {
+		this._metaWindow.disconnect(this._notifyMinimizedId);
+		this._metaWindow.disconnect(this._notifyMaximizedHId);
+		this._metaWindow.disconnect(this._notifyMaximizedVId);
+	}
+}
+
 var WorkspacesBar = GObject.registerClass(
 class WorkspacesBar extends PanelMenu.Button {
 	_init() {
@@ -178,6 +333,9 @@ class WorkspacesBar extends PanelMenu.Button {
 		this.ws_settings = new Gio.Settings({schema: WORKSPACES_SCHEMA});
 		this.ws_names_changed = this.ws_settings.connect(`changed::${WORKSPACES_KEY}`, this._update_ws_names.bind(this));
 		
+		this._custom_icons = new Map();
+		this._update_custom_icons();
+
 		// define windows that need an icon (see https://www.roojs.org/seed/gir-1.2-gtk-3.0/seed/Meta.WindowType.html)
 		this.window_type_whitelist = [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG];
 		
@@ -259,6 +417,15 @@ class WorkspacesBar extends PanelMenu.Button {
 		this.ws_names = this.ws_settings.get_strv(WORKSPACES_KEY);
 		this._update_ws();
 	}
+	
+	// update custom icons
+	_update_custom_icons() {
+		//https://www.andyholmes.ca/articles/dbus-in-gjs.html
+		//recursiveUnpack
+		//https://github.com/ubuntu/gnome-shell-extension-appindicator/blob/master/extension.js
+		//https://github.com/ubuntu/gnome-shell-extension-appindicator/blob/master/appIndicator.js
+		
+	}
 
 	// update the workspaces bar
     _update_ws() {
@@ -313,6 +480,8 @@ class WorkspacesBar extends PanelMenu.Button {
 			if (FAVORITES_FIRST) {
 				this.favorites_list = AppFavorites.getAppFavorites().getFavorites();
 				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_favorites_first.bind(this));
+			} else if (POSITION_SORT) {
+				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_by_position.bind(this));
 			} else {
 	        	this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows);
 			}
@@ -422,6 +591,9 @@ class WorkspacesBar extends PanelMenu.Button {
 			let textureCache = St.TextureCache.get_default();
 			icon.set_gicon(textureCache.bind_cairo_surface_property(w, 'icon'));
 		}
+		if (w.get_wm_class() == "" && w.get_title().includes("Vivaldi")) {
+			icon = new St.Icon({icon_name: "vivaldi", icon_size: ICON_SIZE});
+		}
 		return icon;
 	}
 
@@ -474,6 +646,14 @@ class WorkspacesBar extends PanelMenu.Button {
 				}
 			} else {
 				this.window_thumbnail._remove();
+			}
+		} else if (event.get_button() == 3) {
+			if (this._window_context_menu) {
+				this._window_context_menu.destroy();
+				this._window_context_menu = false;
+			} else {
+				this._window_context_menu = new WindowContextMenu(this, w_box, w);
+				this._window_context_menu.open();
 			}
 		}
 		
@@ -785,6 +965,7 @@ class Extension {
 		DISPLAY_FAVORITES = this.settings.get_boolean('display-favorites');
 		DISPLAY_WORKSPACES = this.settings.get_boolean('display-workspaces');
 		DISPLAY_TASKS = this.settings.get_boolean('display-tasks');
+		TASKS_POSITION = this.settings.get_boolean('tasks-position');
 		DISPLAY_APP_MENU = this.settings.get_boolean('display-app-menu');
 		DISPLAY_DASH = this.settings.get_boolean('display-dash');
 		DISPLAY_WORKSPACES_THUMBNAILS = this.settings.get_boolean('display-workspaces-thumbnails');
@@ -890,9 +1071,11 @@ class Extension {
 		// tasks
 		if (DISPLAY_TASKS) {
 			this.workspaces_bar = new WorkspacesBar();
+			//Main.panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bar, 5, TASKS_POSITION);
 			Main.panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bar, 5, 'left');
 			this.workspaces_bar.set_track_hover(false); // disable hover effect for gnome 40
 		}
+		this._window_context_menu = false;
 		
 		// AppMenu
     	if (!DISPLAY_APP_MENU) {
@@ -925,6 +1108,11 @@ class Extension {
     	if (DISPLAY_TASKS && this.workspaces_bar) {
     		this.workspaces_bar._destroy();
     	}
+
+		// window context menu
+		if (this._window_context_menu) {
+			this._window_context_menu.destroy();
+		}
     	
     	// top panel left box padding
     	if (REDUCE_PADDING) {

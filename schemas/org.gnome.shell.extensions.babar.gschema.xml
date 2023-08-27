@@ -85,6 +85,10 @@
 		<key name="display-tasks" type="b">
 			<default>true</default>
 		</key>
+
+		<key name="tasks-position" type="s">
+			<default>'left'</default>
+		</key>
 		
 		<key name="display-app-menu" type="b">
 			<default>false</default>

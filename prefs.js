@@ -1,6 +1,6 @@
 // Preferences UI for BaBar GNOME Shell extension
 
-const { Gio, Gtk } = imports.gi;
+const { Gio, Gtk, GObject } = imports.gi;
 
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
@@ -43,6 +43,40 @@ function make_item(label, schema, type, min, max) {
 		    'active',
 		    Gio.SettingsBindFlags.DEFAULT
     	);
+	}
+
+	if (type == 'b+e') {
+		grid1 = make_item(label, schema, 'b');
+		grid2 = make_item(label, min, 'e', max);
+		return;
+	}
+
+	if (type == 'e') {
+		let model = new Gtk.ListStore();
+		model.set_column_types([GObject.TYPE_STRING]);
+		for (let i = 0; i < min.length; i++) {
+			let option = min[i];
+			let iter = model.append();
+			model.set(iter, [0], [option]);
+		}
+		this.item_value = new Gtk.ComboBox({
+			model: model,
+			halign: Gtk.Align.END,
+			hexpand: true,
+			visible:true
+		});
+		let rendererText = new Gtk.CellRendererText();
+		this.item_value.pack_start(rendererText, false);
+		this.item_value.add_attribute(rendererText, "text", 0);
+
+		grid.attach(this.item_value, 1, 0, 1, 1);
+
+		this.settings.bind(
+			schema,
+			this.item_value,
+			'active',
+			Gio.SettingsBindFlags.DEFAULT
+		);
 	}
 	
 	if (type == 'i') {
@@ -87,6 +121,7 @@ function make_item(label, schema, type, min, max) {
 		);
 	}
     this.list[is_shell_version_40 ? 'append' : 'add'](grid);
+	return grid;
 }
 
 function make_section_title(title) {
@@ -124,13 +159,14 @@ function buildPrefsWidget() {
     this.prefsWidget[is_shell_version_40 ? 'set_child' : 'add'](this.list);
 
 	// items
-    make_section_title('Elements (default value)');
+	make_section_title('Elements (default value)');
 
 	make_item('Activities (false)', 'display-activities', 'b');
     make_item('Applications grid (true)', 'display-app-grid', 'b');
     make_item('Favorites menu (true)', 'display-favorites', 'b');
     make_item('Workspaces (true)', 'display-workspaces', 'b');
-    make_item('Tasks (true)', 'display-tasks', 'b');
+    //make_item('Tasks (true)', 'display-tasks', 'b');
+	make_item('Tasks (true)', 'display-tasks', 'b+e', 'tasks-position', ['left', 'center', 'right']);
     make_item('Application menu (false)', 'display-app-menu', 'b');
     make_item('Dash in overview (true)', 'display-dash', 'b');
     make_item('Workspaces thumbnails in overview (true)', 'display-workspaces-thumbnails', 'b');
