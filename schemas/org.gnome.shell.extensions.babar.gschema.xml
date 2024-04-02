@@ -37,7 +37,9 @@
 		<key name="flat-workspaces-buttons" type="b">
 			<default>false</default>
 		</key>
-		
+		<key name="plain-workspaces-buttons" type="b">
+			<default>false</default>
+		</key>
 		<key name="tooltip-vertical-padding" type="i">
 			<default>10</default>
 		</key>
@@ -55,6 +57,10 @@
 		</key>
 		
 		<key name="desaturate-icons" type="b">
+			<default>false</default>
+		</key>
+
+		<key name="bottom-panel" type="b">
 			<default>false</default>
 		</key>
 		
@@ -127,7 +133,7 @@
 		</key>
 		
 		<key name="all-workspaces-label" type="s">
-			<default>''</default>
+			<default>'🖈'</default>
 		</key>
 	</schema>
 </schemalist>

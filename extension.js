@@ -5,33 +5,38 @@
 	License GPL v3
 */
 
+import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
+import Pango from 'gi://Pango';
+import Shell from 'gi://Shell';
+import St from 'gi://St';
 
-const { Clutter, Gio, GLib, GObject, Meta, Shell, St } = imports.gi;
-
-const Main = imports.ui.main;
-const DND = imports.ui.dnd;
-const PanelMenu = imports.ui.panelMenu;
-const PopupMenu = imports.ui.popupMenu;
-const Dash = imports.ui.dash;
-const AppDisplay = imports.ui.appDisplay;
-const AppFavorites = imports.ui.appFavorites;
-const AppMenu = Main.panel.statusArea.appMenu;
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as Dash from 'resource:///org/gnome/shell/ui/dash.js';
+import * as AppDisplay from 'resource:///org/gnome/shell/ui/appDisplay.js';
+import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
+//const AppMenu = Main.panel.statusArea.appMenu;
+const PanelBox = Main.layoutManager.panelBox;
 const WM = global.workspace_manager;
-const Util = imports.misc.util;
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
+import * as Util from 'resource:///org/gnome/shell/misc/util.js';
+import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// get Shell version
-var is_shell_version_40 = imports.misc.config.PACKAGE_VERSION.split('.')[0] >= 40;
-
-// translation needed to restore Places label, if any
-const Gettext = imports.gettext.domain('gnome-shell-extensions');
-const _ = Gettext.gettext;
 const N_ = x => x;
 
 // workspaces names from native schema
 var WORKSPACES_SCHEMA = "org.gnome.desktop.wm.preferences";
 var WORKSPACES_KEY = "workspace-names";
+
+// workspace settings from mutter schema.
+var MUTTER_SCHEMA = "org.gnome.mutter";
+var PRIMARY_WORKSPACES_KEY = "workspaces-only-on-primary";
+var DYNAMIC_WORKSPACES_KEY = "dynamic-workspaces";
 
 // initial fallback settings
 var WORKSPACES_RIGHT_CLICK = false;
@@ -43,6 +48,7 @@ var PLACES_ICON_NAME = 'folder-symbolic';
 var FAVORITES_ICON_NAME = 'starred-symbolic';
 var FALLBACK_ICON_NAME = 'applications-system-symbolic';
 var ICON_SIZE = 18;
+var PLAIN_WORKSPACES_BUTTONS = true;
 var ROUNDED_WORKSPACES_BUTTONS = false;
 var FLAT_WORKSPACES_BUTTONS = false;
 var TOOLTIP_VERTICAL_PADDING = 10;
@@ -51,6 +57,7 @@ var HIDDEN_OPACITY = 127;
 var UNFOCUSED_OPACITY = 255;
 var FOCUSED_OPACITY = 255;
 var DESATURATE_ICONS = false;
+var BOTTOM_PANEL = false;
 var FAVORITES_FIRST = false;
 var POSITION_SORT = false;
 var DISPLAY_ACTIVITIES = false;
@@ -85,11 +92,7 @@ class AppGridButton extends PanelMenu.Button {
 		if (Main.overview.visible) {
 			Main.overview.hide();
 		} else {
-			if (is_shell_version_40) {
-				Main.overview.showApps();
-			} else {
-				Main.overview.viewSelector._toggleAppsPage();
-			}
+			Main.overview.showApps();
 		}
 	}
 	
@@ -108,9 +111,6 @@ class FavoritesMenu extends PanelMenu.Button {
     	this.fav_menu_button = new St.BoxLayout({});
 		this.fav_menu_icon = new St.Icon({icon_name: FAVORITES_ICON_NAME, style_class: 'system-status-icon'});
         this.fav_menu_button.add_child(this.fav_menu_icon);
-		if (!is_shell_version_40) {
-			this.fav_menu_button.add_child(PopupMenu.arrowIcon(St.Side.BOTTOM));
-		}
         this.add_child(this.fav_menu_button);
 
 		this._display_favorites();
@@ -173,11 +173,12 @@ class WindowContextMenu extends PopupMenu.PopupMenu {
 		super(w_box, 0.5, St.Side.BOTTOM);
 		console.log("rbrent start");
 		this.actor.add_style_class_name('window-menu');
-		Main.layoutManager.uiGroup.add_actor(this.actor);
 		this.window_tracker = Shell.WindowTracker.get_default();
 		this.actor.hide();
 		this.actor.connect('destroy', this._onDestroy.bind(this));
 		source.connect('destroy', this._onDestroy.bind(this));
+		source._contextMenuManager.addMenu(this);
+		Main.uiGroup.add_child(this.actor);
 		this._buildMenu(metaWindow);
 	}
 
@@ -198,7 +199,7 @@ class WindowContextMenu extends PopupMenu.PopupMenu {
 		/* ---------------------------------------------------------------- */
 		this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
 
-		this._minimizeItem = new PopupMenu.PopupMenuItem('');
+		this._minimizeItem = new PopupMenu.PopupMenuItem(_('Minimize'));
 		this._minimizeItem.connect('activate', () => {
 			if (this._metaWindow.minimized)
 				this._metaWindow.unminimize();
@@ -210,7 +211,7 @@ class WindowContextMenu extends PopupMenu.PopupMenu {
 			'notify::minimized', this._updateMinimizeItem.bind(this));
 		this._updateMinimizeItem();
 
-		this._maximizeItem = new PopupMenu.PopupMenuItem('');
+		this._maximizeItem = new PopupMenu.PopupMenuItem(_('Maximize'));
 		this._maximizeItem.connect('activate', () => {
 			if (this._metaWindow.get_maximized() === Meta.MaximizeFlags.BOTH)
 				this._metaWindow.unmaximize(Meta.MaximizeFlags.BOTH);
@@ -258,6 +259,15 @@ class WindowContextMenu extends PopupMenu.PopupMenu {
 			this._metaWindow.delete(global.get_current_time());
 		});
 		this.addMenuItem(this._closeItem);
+
+		this._decorateItem = new PopupMenu.PopupMenuItem(_(this._metaWindow.decorated ? 'Undecorate' : 'Decorate'));
+		this._decorateItem.connect('activate', () => {
+			if (this._metaWindow.decorated)
+				undecorate(this._metaWindow);
+			else
+				decorate(this._metaWindow);
+		});
+		this.addMenuItem(this._decorateItem);
 
 		this.connect('open-state-changed', (o, b, d) => {
 			console.log("rbrent, isopen", this.isOpen);
@@ -325,6 +335,7 @@ var WorkspacesBar = GObject.registerClass(
 class WorkspacesBar extends PanelMenu.Button {
 	_init() {
 		super._init(0.0, 'Babar-Tasks');
+		this.add_style_class_name('workspaces-bar');
 
 		// tracker for windows
 		this.window_tracker = Shell.WindowTracker.get_default();
@@ -332,6 +343,12 @@ class WorkspacesBar extends PanelMenu.Button {
 		// define gsettings schema for workspaces names, get workspaces names, signal for settings key changed
 		this.ws_settings = new Gio.Settings({schema: WORKSPACES_SCHEMA});
 		this.ws_names_changed = this.ws_settings.connect(`changed::${WORKSPACES_KEY}`, this._update_ws_names.bind(this));
+		
+		// define gsettings schema for mutter, get if workspaces are dynamic and primary monitor-only, signal on change.
+		this.mutter_settings = new Gio.Settings({schema: MUTTER_SCHEMA});
+		this.ws_primary_changed = this.mutter_settings.connect(`changed::${PRIMARY_WORKSPACES_KEY}`, this._update_ws_primary.bind(this));
+		this.ws_dynamic_changed = this.mutter_settings.connect(`changed::${DYNAMIC_WORKSPACES_KEY}`, this._update_ws_dynamic.bind(this));
+		this._is_ws_dynamic = this.mutter_settings.get_boolean(DYNAMIC_WORKSPACES_KEY);
 		
 		this._custom_icons = new Map();
 		this._update_custom_icons();
@@ -343,6 +360,7 @@ class WorkspacesBar extends PanelMenu.Button {
 		this.ws_bar = new St.BoxLayout({});
         this._update_ws_names();
         this.add_child(this.ws_bar);
+		this._contextMenuManager = new PopupMenu.PopupMenuManager(this);
         
 		// window thumbnail
 		if (RIGHT_CLICK) {
@@ -366,6 +384,14 @@ class WorkspacesBar extends PanelMenu.Button {
 	_destroy() {
 		if (this.ws_settings && this.ws_names_changed) {
 			this.ws_settings.disconnect(this.ws_names_changed);
+		}
+
+		if (this.mutter_settings && this.ws_primary_changed) {
+			this.mutter_settings.disconnect(this.ws_primary_changed);
+		}
+
+		if (this.mutter_settings && this.ws_dynamic_changed) {
+			this.mutter_settings.disconnect(this.ws_dynamic_changed);
 		}
 
 		if (this._ws_number_changed) {
@@ -417,6 +443,17 @@ class WorkspacesBar extends PanelMenu.Button {
 		this.ws_names = this.ws_settings.get_strv(WORKSPACES_KEY);
 		this._update_ws();
 	}
+
+	// update if workspaces are dynamic.
+	_update_ws_dynamic(){
+		this._is_ws_dynamic = this.mutter_settings.get_boolean(DYNAMIC_WORKSPACES_KEY);
+		this._update_ws();
+	}
+
+	// Update if workspaces should only display on primary vs all monitors.
+	_update_ws_primary(){
+		this._update_ws();
+	}
 	
 	// update custom icons
 	_update_custom_icons() {
@@ -442,6 +479,9 @@ class WorkspacesBar extends PanelMenu.Button {
 		} else if (ROUNDED_WORKSPACES_BUTTONS) {
 			button_type = "rounded";
 		}
+		if (PLAIN_WORKSPACES_BUTTONS) {
+			button_type = "plain";
+		}
         		
 		// display all current workspaces and tasks buttons
         for (let ws_index = 0; ws_index < this.ws_count; ++ws_index) {
@@ -449,6 +489,7 @@ class WorkspacesBar extends PanelMenu.Button {
 			let ws_box = new WorkspaceButton();
 			ws_box.number = ws_index;
 			let ws_box_label = new St.Label({y_align: Clutter.ActorAlign.CENTER});
+			ws_box_label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
 			
 			// rounded buttons option
 			if (ws_index == this.active_ws_index) {
@@ -495,7 +536,14 @@ class WorkspacesBar extends PanelMenu.Button {
 					}
 	        	}
 	        }
-			this._create_workspace_seperator(ws_index, MIN_TASKS_PER_WORKSPACE - task_total, button_type);
+
+			let size = MIN_TASKS_PER_WORKSPACE - task_total;
+			// for dynamic workspaces, make the last entry a + when inactive.
+			if (this._is_ws_dynamic && task_total == 0 && this.active_ws_index != ws_index  && ws_index == WM.n_workspaces -1) {
+				size = 0;
+				ws_box_label.set_text("    +    ");
+			}
+			this._create_workspace_seperator(ws_index, size, button_type);
 		}
 		if (ALL_WORKSPACES_LABEL) {
 			let ws_box = new WorkspaceButton();
@@ -586,10 +634,10 @@ class WorkspacesBar extends PanelMenu.Button {
 		}
 		// sometimes no icon is defined or icon is void, at least for a short time
 		if (!icon || icon.get_style_class_name() == 'fallback-app-icon') {
-			icon = new St.Icon({icon_name: FALLBACK_ICON_NAME, icon_size: ICON_SIZE});
-			// Attempt to use the window icon in place of the app's icon.
-			let textureCache = St.TextureCache.get_default();
-			icon.set_gicon(textureCache.bind_cairo_surface_property(w, 'icon'));
+			icon = new St.Icon({icon_name: w.get_wm_class() || w.get_title(), icon_size: ICON_SIZE});
+			if (!icon || icon.get_style_class_name() == 'fallback-app-icon') {
+				icon = new St.Icon({icon_name: FALLBACK_ICON_NAME, icon_size: ICON_SIZE});
+			}
 		}
 		if (w.get_wm_class() == "" && w.get_title().includes("Vivaldi")) {
 			icon = new St.Icon({icon_name: "vivaldi", icon_size: ICON_SIZE});
@@ -648,7 +696,7 @@ class WorkspacesBar extends PanelMenu.Button {
 				this.window_thumbnail._remove();
 			}
 		} else if (event.get_button() == 3) {
-			if (this._window_context_menu) {
+			if (this._window_context_menu && this._window_context_menu.active) {
 				this._window_context_menu.destroy();
 				this._window_context_menu = false;
 			} else {
@@ -928,14 +976,27 @@ class WindowButton extends St.Bin {
 	}
 });
 
-class Extension {
-	constructor() {
+export default class BabarExtension extends Extension {
+	constructor(metadata) {
+		super(metadata);
 		extension = this;
+		// Register callbacks to be notified about changes
+		//HGS Changed to use internal wrapper for MonitorManager.get to work under Gnome 44
+		let monitorManager = getMonitorManager();
+		this._monitorsChanged = monitorManager.connect('monitors-changed', () => this.set_panel_position());
+		this._panelHeightChanged = PanelBox.connect("notify::height", () => this.set_panel_position());
 	}
+
+	destroy() {
+	//HGS Fix for G44
+        let monitorManager = getMonitorManager();
+        monitorManager.disconnect(this._monitorsChanged);
+        PanelBox.disconnect(this._panelHeightChanged)
+    }
 	
 	// get settings
     _get_settings() {
-        this.settings = ExtensionUtils.getSettings('org.gnome.shell.extensions.babar');
+        this.settings = this.getSettings('org.gnome.shell.extensions.babar');
         
         this.settings_already_changed = false;
 		this.settings_changed = this.settings.connect('changed', this._settings_changed.bind(this));
@@ -951,12 +1012,14 @@ class Extension {
 		ICON_SIZE = this.settings.get_int('icon-size');
 		THUMBNAIL_MAX_SIZE = this.settings.get_int('thumbnail-max-size');
 		ROUNDED_WORKSPACES_BUTTONS = this.settings.get_boolean('rounded-workspaces-buttons');
+		PLAIN_WORKSPACES_BUTTONS = this.settings.get_boolean('plain-workspaces-buttons');
 		FLAT_WORKSPACES_BUTTONS = this.settings.get_boolean('flat-workspaces-buttons');
 		TOOLTIP_VERTICAL_PADDING = this.settings.get_int('tooltip-vertical-padding');
 		HIDDEN_OPACITY = this.settings.get_int('hidden-opacity');
 		UNFOCUSED_OPACITY = this.settings.get_int('unfocused-opacity');
 		FOCUSED_OPACITY = this.settings.get_int('focused-opacity');
 		DESATURATE_ICONS = this.settings.get_boolean('desaturate-icons');
+		BOTTOM_PANEL = this.settings.get_boolean('bottom-panel');
 		FAVORITES_FIRST = this.settings.get_boolean('favorites-first');
 		POSITION_SORT = this.settings.get_boolean('position-sort');
 		DISPLAY_ACTIVITIES = this.settings.get_boolean('display-activities');
@@ -999,7 +1062,7 @@ class Extension {
 	// toggle Places Status Indicator extension label to folder	
 	_show_places_icon(show_icon) {
 		this.places_indicator = Main.panel.statusArea['places-menu'];
-		if (this.places_indicator && is_shell_version_40) {
+		if (this.places_indicator) {
 			this.places_indicator.remove_child(this.places_indicator.get_first_child());
 			if (show_icon) {
 				this.places_icon = new St.Icon({icon_name: PLACES_ICON_NAME, style_class: 'system-status-icon'});
@@ -1007,17 +1070,6 @@ class Extension {
 			} else {
 				this.places_label = new St.Label({text: _('Places'), y_expand: true, y_align: Clutter.ActorAlign.CENTER});
 				this.places_indicator.add_child(this.places_label);
-			}
-		}
-		if (this.places_indicator && !is_shell_version_40) {
-			this.places_box = this.places_indicator.get_first_child();
-			this.places_box.remove_child(this.places_box.get_first_child());
-			if (show_icon) {
-				this.places_icon = new St.Icon({icon_name: PLACES_ICON_NAME, style_class: 'system-status-icon'});
-				this.places_box.insert_child_at_index(this.places_icon, 0);
-			} else {
-				this.places_label = new St.Label({text: _('Places'), y_expand: true, y_align: Clutter.ActorAlign.CENTER});
-				this.places_box.insert_child_at_index(this.places_label, 0);
 			}
 		}
 	}
@@ -1030,6 +1082,22 @@ class Extension {
 			Main.overview.dash.hide();
 		}
 	}
+
+	// set panel poistion according to the settings
+	set_panel_position() {
+		if (BOTTOM_PANEL) {
+			let monitor = Main.layoutManager.primaryMonitor;
+    		PanelBox.set_position(monitor.x, (monitor.x + monitor.height - PanelBox.height));
+		} else {
+			this.reset_panel_position()
+		}
+	}
+
+	// restore panel position to the top
+	reset_panel_position() {
+		let monitor = Main.layoutManager.primaryMonitor;
+        PanelBox.set_position(monitor.x, monitor.y);
+	}
 	
 	// toggle workspaces thumbnails in overview
 	_hide_ws_thumbnails() {
@@ -1039,6 +1107,9 @@ class Extension {
     enable() {    
 		// get settings
     	this._get_settings();
+
+		// adjust panel position to top or bottom edge of the screen
+    	this.set_panel_position();
 
 		// top panel left box padding
     	if (REDUCE_PADDING) {
@@ -1071,16 +1142,9 @@ class Extension {
 		// tasks
 		if (DISPLAY_TASKS) {
 			this.workspaces_bar = new WorkspacesBar();
-			//Main.panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bar, 5, TASKS_POSITION);
 			Main.panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bar, 5, 'left');
-			this.workspaces_bar.set_track_hover(false); // disable hover effect for gnome 40
 		}
 		this._window_context_menu = false;
-		
-		// AppMenu
-    	if (!DISPLAY_APP_MENU) {
-			AppMenu.container.hide();
-		}
 		
 		// dash
 		if (!DISPLAY_DASH) {
@@ -1118,6 +1182,9 @@ class Extension {
     	if (REDUCE_PADDING) {
     		Main.panel._leftBox.remove_style_class_name('leftbox-reduced-padding');
     	}
+
+    	// restore panel position
+    	this.reset_panel_position();
     	
     	// Places label and unwatch extensions changes
     	if (DISPLAY_PLACES_ICON && this.places_indicator) {
@@ -1128,10 +1195,6 @@ class Extension {
     	// Activities button
     	this._show_activities(true);
     	
-    	// AppMenu icon
-    	if (!Main.overview.visible && !Main.sessionMode.isLocked) {
-			AppMenu.container.show();
-		}
 		
 		// dash
 		this._show_dash(true);
@@ -1146,6 +1209,43 @@ class Extension {
     }
 }
 
-function init() {
-	return new Extension();
+//HGS Added to circumvent Meta.MonitorManager
+// Provide internal wrapper for MonitorManager.get to work under Gnome 44
+// Copied from https://github.com/micheleg/dash-to-dock/commit/ec2ba66febd2195b7ae1cd25b413b6da2a17f6a8
+function getMonitorManager() {
+    if (global.backend.get_monitor_manager !== undefined)
+        return global.backend.get_monitor_manager();
+    else
+        return Meta.MonitorManager.get();
+}
+
+
+// Copied from https://github.com/tbranyen/gnome-shell-extension-undecorate
+function activeWindowId(window) {
+    try {
+        return parseInt(window.get_description(), 16);
+    } catch(e) {
+        log(e);
+        return;
+    }
+}
+
+function undecorate(window) {
+    try {
+        GLib.spawn_command_line_sync('xprop -id ' + activeWindowId(window)
+            + ' -f _MOTIF_WM_HINTS 32c -set'
+            + ' _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0"');
+    } catch(e) {
+        log(e);
+    }
+}
+
+function decorate(window) {
+    try {
+        GLib.spawn_command_line_sync('xprop -id ' + activeWindowId(window)
+            + ' -f _MOTIF_WM_HINTS 32c -set'
+            + ' _MOTIF_WM_HINTS "0x2, 0x0, 0x1, 0x0, 0x0"');
+    } catch(e) {
+        log(e);
+    }
 }
