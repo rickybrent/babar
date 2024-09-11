@@ -162,4 +162,6 @@
 .workspace-inactive-flat {
   color: rgba(255, 255, 255, 0.3);
   font-size:smaller;
+  text-overflow: clip;
+  min-width: 40px;
 }

@@ -634,14 +634,26 @@ class WorkspacesBar extends PanelMenu.Button {
 		}
 		// sometimes no icon is defined or icon is void, at least for a short time
 		if (!icon || icon.get_style_class_name() == 'fallback-app-icon') {
-			icon = new St.Icon({icon_name: w.get_wm_class() || w.get_title(), icon_size: ICON_SIZE});
+			let wmclass=w.get_wm_class();
+			if (wmclass && wmclass.startsWith("steam_app_")) {
+				wmclass = wmclass.replace("steam_app", "steam_icon");
+			}
+			if (!wmclass || wmclass=="" || wmclass=="explorer.exe") {
+				wmclass = w.get_title() || "";
+				wmclass = wmclass.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+				log("fallback-app-icon from title", wmclass)
+				if (wmclass.includes("vivaldi")) {
+					wmclass="vivaldi";
+				}
+			}
+			icon = new St.Icon({icon_name: wmclass, icon_size: ICON_SIZE});
 			if (!icon || icon.get_style_class_name() == 'fallback-app-icon') {
 				icon = new St.Icon({icon_name: FALLBACK_ICON_NAME, icon_size: ICON_SIZE});
-			}
+			}// toLowerCase()
 		}
-		if (w.get_wm_class() == "" && w.get_title().includes("Vivaldi")) {
-			icon = new St.Icon({icon_name: "vivaldi", icon_size: ICON_SIZE});
-		}
+		//if (w.get_wm_class() == "" && w.get_title().includes("Vivaldi")) {
+		//	icon = new St.Icon({icon_name: "vivaldi", icon_size: ICON_SIZE});
+		//}
 		return icon;
 	}
 
