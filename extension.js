@@ -171,6 +171,92 @@ class FavoritesMenu extends PanelMenu.Button {
 });
 
 
+
+class WorkspaceContextMenu extends PopupMenu.PopupMenu {
+	constructor(source, w_box, ws_index) {
+		super(w_box, 0.5, St.Side.BOTTOM);
+		console.log("rbrent start2");
+		this.actor.add_style_class_name('window-menu');
+		this.window_tracker = Shell.WindowTracker.get_default();
+		this.actor.hide();
+		this.actor.connect('destroy', this._onDestroy.bind(this));
+		source.connect('destroy', this._onDestroy.bind(this));
+		source._contextMenuManager.addMenu(this);
+		Main.uiGroup.add_child(this.actor);
+		this._buildMenu(ws_index);
+	}
+
+	_buildMenu(ws_index) {
+		this._ws_index = ws_index;
+		/* ---------------------------------------------------------------- */
+		//this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem(metaWindow.get_title()))
+		/* ---------------------------------------------------------------- */
+		this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
+
+		this.list_fav = AppFavorites.getAppFavorites().getFavorites();
+		// create favorites items
+		for (let fav_index = 0; fav_index < this.list_fav.length; ++fav_index) {
+			this.fav = this.list_fav[fav_index];
+			this.fav_icon = this.fav.create_icon_texture(64);
+
+			this.item = new PopupMenu.PopupImageMenuItem(this.fav.get_name(), this.fav_icon.get_gicon());
+			this.item.connect('activate', () => this._activate_fav(fav_index));
+			this.addMenuItem(this.item);
+
+			// drag and drop
+			this.item.fav_index = fav_index;
+			this.item.is_babar_favorite = true;
+
+			this.item._delegate = this.item;
+			this.item._draggable = DND.makeDraggable(this.item, { dragActorOpacity: HIDDEN_OPACITY });
+
+			this.item._draggable.connect('drag-end', this._on_drag_end.bind(this));
+			this.item._draggable.connect('drag-cancelled', this._on_drag_end.bind(this));
+		}
+
+		this.connect('open-state-changed', (o, b, d) => {
+			console.log("rbrent2, isopen", this.isOpen);
+			if (!this.isOpen)
+				return;
+			Main.panel.menuManager.addMenu(this);
+		});
+	}
+
+	// on drag cancelled or ended
+	_on_drag_end() {
+		this.menu.close();
+		this._display_favorites();
+	}
+
+	// activate favorite
+	_activate_fav(fav_index) {
+		AppFavorites.getAppFavorites().getFavorites()[fav_index].open_new_window(-1);
+	}
+
+	_grabAction(window, grabOp, time) {
+		if (global.display.get_grab_op() == Meta.GrabOp.NONE) {
+			window.begin_grab_op(grabOp, true, time);
+			return;
+		}
+
+		let waitId = 0;
+		let id = global.display.connect('grab-op-end', display => {
+			display.disconnect(id);
+			GLib.source_remove(waitId);
+
+			window.begin_grab_op(grabOp, true, time);
+		});
+
+		waitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+			global.display.disconnect(id);
+			return GLib.SOURCE_REMOVE;
+		});
+	}
+
+	_onDestroy() {}
+}
+
+
 class WindowContextMenu extends PopupMenu.PopupMenu {
 	constructor(source, w_box, metaWindow) {
 		super(w_box, 0.5, St.Side.BOTTOM);
@@ -805,7 +891,16 @@ class WorkspacesBar extends PanelMenu.Button {
 
     // toggle or show overview
     _toggle_ws(widget, event, ws_index) {
-		if (ws_index < 0) {
+		// TODO: Have this respect the options or remove them.
+		if (event.get_button() == 3) {
+			if (this._window_context_menu && this._window_context_menu.active) {
+				this._window_context_menu.destroy();
+				this._window_context_menu = false;
+			} else {
+				this._window_context_menu = new WorkspaceContextMenu(this, widget, ws_index);
+				this._window_context_menu.open();
+			}
+		} else if (ws_index < 0) {
 			Main.overview.toggle();
 		} else if (WORKSPACES_RIGHT_CLICK) {
 			// left click: show workspace
