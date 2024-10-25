@@ -29,7 +29,10 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 
 const N_ = x => x;
 
-// workspaces names from native schema
+// for dash-to-panel compatibility.
+const DASH_TO_PANEL_UUID = 'dash-to-panel@jderose9.github.com';
+
+// workspaces names from native schema.
 var WORKSPACES_SCHEMA = "org.gnome.desktop.wm.preferences";
 var WORKSPACES_KEY = "workspace-names";
 
@@ -333,9 +336,11 @@ class WindowContextMenu extends PopupMenu.PopupMenu {
 
 var WorkspacesBar = GObject.registerClass(
 class WorkspacesBar extends PanelMenu.Button {
-	_init() {
+	_init(monitorIndex) {
 		super._init(0.0, 'Babar-Tasks');
 		this.add_style_class_name('workspaces-bar');
+
+		this.monitorIndex = monitorIndex;
 
 		// tracker for windows
 		this.window_tracker = Shell.WindowTracker.get_default();
@@ -518,13 +523,20 @@ class WorkspacesBar extends PanelMenu.Button {
 	        
 	        // tasks
 	        this.ws_current = WM.get_workspace_by_index(ws_index);
+
+			// limit to current monitor if enabled.
+			let window_list = this.ws_current.list_windows();
+			if (this.monitorIndex != undefined) {
+				window_list = window_list.filter(w => w.get_monitor() == this.monitorIndex);
+			}
+
 			if (FAVORITES_FIRST) {
 				this.favorites_list = AppFavorites.getAppFavorites().getFavorites();
-				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_favorites_first.bind(this));
+				this.ws_current.windows = window_list.sort(this._sort_windows_favorites_first.bind(this));
 			} else if (POSITION_SORT) {
-				this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows_by_position.bind(this));
+				this.ws_current.windows = window_list.sort(this._sort_windows_by_position.bind(this));
 			} else {
-	        	this.ws_current.windows = this.ws_current.list_windows().sort(this._sort_windows);
+				this.ws_current.windows = window_list.sort(this._sort_windows);
 			}
 			let task_total = 0;
 	        for (let window_index = 0; window_index < this.ws_current.windows.length; ++window_index) {
@@ -632,9 +644,9 @@ class WorkspacesBar extends PanelMenu.Button {
 		if (app) {
 			icon = app.create_icon_texture(ICON_SIZE);
 		}
+		let wmclass = w.get_wm_class();
 		// sometimes no icon is defined or icon is void, at least for a short time
 		if (!icon || icon.get_style_class_name() == 'fallback-app-icon') {
-			let wmclass=w.get_wm_class();
 			if (wmclass && wmclass.startsWith("steam_app_")) {
 				wmclass = wmclass.replace("steam_app", "steam_icon");
 			}
@@ -651,9 +663,6 @@ class WorkspacesBar extends PanelMenu.Button {
 				icon = new St.Icon({icon_name: FALLBACK_ICON_NAME, icon_size: ICON_SIZE});
 			}// toLowerCase()
 		}
-		//if (w.get_wm_class() == "" && w.get_title().includes("Vivaldi")) {
-		//	icon = new St.Icon({icon_name: "vivaldi", icon_size: ICON_SIZE});
-		//}
 		return icon;
 	}
 
@@ -1116,7 +1125,88 @@ export default class BabarExtension extends Extension {
 		Main.overview._overview._controls._thumbnailsBox.hide();
 	}
 
-    enable() {    
+	_isExtensionActive(uuid) {
+		const extension = Main.extensionManager.lookup(uuid);
+		return (extension?.state === 1);
+	}
+
+	_connectExtensionSignals() {
+		const dtpActive = this._isExtensionActive(DASH_TO_PANEL_UUID);
+		if (dtpActive && global.dashToPanel)
+			global.dashToPanel._panelsCreatedId = global.dashToPanel.connect('panels-created', () => this._reload());
+	}
+
+	_disconnectExtensionSignals() {
+		if (global.dashToPanel?._panelsCreatedId) {
+			global.dashToPanel.disconnect(global.dashToPanel._panelsCreatedId);
+			delete global.dashToPanel._panelsCreatedId;
+		}
+	}
+
+	_getPanels(){
+		const dtpActive = this._isExtensionActive(DASH_TO_PANEL_UUID);
+		let panels;
+		let panelExtensionEnabled = false;
+		if (dtpActive && global.dashToPanel?.panels) {
+			panels = global.dashToPanel.panels.filter(p => p);
+			panelExtensionEnabled = true;
+			console.log("dtp active; " + panels.length);
+		} else {
+			panels = [Main];
+		}
+		return panels;
+	}
+
+	_removePanelChanges(){
+		let panels = this._getPanels();
+		for (var i = 0; i < panels.length; i++) {
+			panels[i].panel._leftBox.remove_style_class_name('leftbox-reduced-padding');
+		}
+		if (this.workspaces_bars) {
+			for (var i = 0; i < this.workspaces_bars.length; i++) {
+				this.workspaces_bars[i]._destroy();
+			}
+			this.workspaces_bars = [];
+		}
+		if (this.favorites_menus) {
+			for (var i = 0; i < this.favorites_menus.length; i++) {
+				this.favorites_menus[i]._destroy();
+			}
+			this.favorites_menus = [];
+		}
+	}
+
+	_reloadPanelChanges(){
+		let panels = this._getPanels();
+		this._removePanelChanges();
+
+		// Apply/add:
+		if (REDUCE_PADDING) {
+			for (var i = 0; i < panels.length; i++) {
+				panels[i].panel._leftBox.add_style_class_name('leftbox-reduced-padding');
+			}
+		}
+
+		if (DISPLAY_FAVORITES) {
+			for (var i = 0; i < panels.length; i++) {
+				this.favorites_menus[i] = new FavoritesMenu();
+				panels[i].panel.addToStatusArea('babar-favorites-menu', this.favorites_menus[i], 3, 'left');
+			}
+		}
+
+		if (DISPLAY_TASKS) {
+			const byMonitor = panels.length > 1;
+			for (var i = 0; i < panels.length; i++) {
+				const monitor = byMonitor ? panels[i]?.monitor?.index : undefined;
+				this.workspaces_bars[i] = new WorkspacesBar(monitor);
+				console.log("added workspace "+ i + " / " +  panels.length);
+				console.log("For monitor: " + monitor);
+				panels[i].panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bars[i], 5, 'left');
+			}
+		}
+	}
+
+    enable() {
 		// get settings
     	this._get_settings();
 
@@ -1146,16 +1236,14 @@ export default class BabarExtension extends Extension {
 		}
 		
 		// favorites
-		if (DISPLAY_FAVORITES) {
-			this.favorites_menu = new FavoritesMenu();
-			Main.panel.addToStatusArea('babar-favorites-menu', this.favorites_menu, 3, 'left');
-		}
+		//if (DISPLAY_FAVORITES) {
+		//	this.favorites_menu = new FavoritesMenu();
+		//	Main.panel.addToStatusArea('babar-favorites-menu', this.favorites_menu, 3, 'left');
+		//}
+		this.favorites_menus = [];
 		
 		// tasks
-		if (DISPLAY_TASKS) {
-			this.workspaces_bar = new WorkspacesBar();
-			Main.panel.addToStatusArea('babar-workspaces-bar', this.workspaces_bar, 5, 'left');
-		}
+		this.workspaces_bars = [];
 		this._window_context_menu = false;
 		
 		// dash
@@ -1167,9 +1255,23 @@ export default class BabarExtension extends Extension {
 		if (!DISPLAY_WORKSPACES_THUMBNAILS) {
 			this.showing_overview = Main.overview.connect('showing', this._hide_ws_thumbnails.bind(this));
 		}
+
+		// for when dtp is enabled/disabled.
+		Main.extensionManager.connectObject('extension-state-changed', (data, extension) => {
+			if (extension.uuid === DASH_TO_PANEL_UUID) {
+				this._disconnectExtensionSignals();
+				this._connectExtensionSignals();
+				this._reloadPanelChanges();
+			}
+		}, this);
+		this._connectExtensionSignals();
+		this._reloadPanelChanges();
     }
 
     disable() {
+		// Remove style changes, workspace bars.
+		this._removePanelChanges();
+
 		// app grid
     	if (DISPLAY_APP_GRID && this.app_grid) {
     		this.app_grid._destroy();
@@ -1184,6 +1286,12 @@ export default class BabarExtension extends Extension {
     	if (DISPLAY_TASKS && this.workspaces_bar) {
     		this.workspaces_bar._destroy();
     	}
+
+		if (this.workspaces_bars) {
+			for (var i = 0; i < this.workspaces_bars.length; i++) {
+				this.workspaces_bars[i]._destroy();
+			}
+		}
 
 		// window context menu
 		if (this._window_context_menu) {
@@ -1218,6 +1326,11 @@ export default class BabarExtension extends Extension {
 		
 		// unwatch settings
 		this.settings.disconnect(this.settings_changed);
+
+		// disconnect dtp and extension change signals.
+		this._disconnectExtensionSignals();
+		Main.extensionManager.disconnectObject(this);
+
     }
 }
 
