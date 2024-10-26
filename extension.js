@@ -74,6 +74,7 @@ var DISPLAY_APP_MENU = false;
 var DISPLAY_DASH = true;
 var DISPLAY_WORKSPACES_THUMBNAILS = true;
 var MIN_TASKS_PER_WORKSPACE = 0;
+var MIN_WORKSPACE_SIZE_PERCENT = 0.0;
 var ALL_WORKSPACES_LABEL = '';
 
 let extension;
@@ -635,18 +636,48 @@ class WorkspacesBar extends PanelMenu.Button {
 	        	}
 	        }
 
-			let size = MIN_TASKS_PER_WORKSPACE - task_total;
-			// for dynamic workspaces, make the last entry a + when inactive.
-			if (this._is_ws_dynamic && task_total == 0 && this.active_ws_index != ws_index  && ws_index == WM.n_workspaces -1) {
-				size = 0;
-				ws_box_label.set_text("    +    ");
+			let min_size_percent = MIN_WORKSPACE_SIZE_PERCENT;
+			console.log("MIN_WORKSPACE_SIZE_PERCENT" + min_size_percent);
+			if (min_size_percent > 0) {
+				/*
+				let ws_count_m = Math.max(1, this.ws_count);
+				if (this._is_ws_dynamic) {
+					if (task_total == 0 && this.active_ws_index != ws_index && ws_index == WM.n_workspaces - 1) {
+						ws_box_label.set_text("    +    ");
+						ws_count_m = 1;
+					} else {
+						ws_count_m = Math.max(1, this.ws_count - 1);
+					}
+				}
+				const size = (((min_size_percent / ws_count_m) * this.panel.get_width()) - ws_box.get_width()) / (7 + ICON_SIZE);
+				console.log("sz:" + size);
+				this._create_workspace_seperator(ws_index, size, button_type);
+				console.log(ws_box.get_width() + ' ; min-width: ' + ((min_size_percent / ws_count_m) * this.panel.get_width()) + 'px');
+				//ws_box.set_style('min-width: ' + ((min_size_percent / ws_count_m) * this.panel.get_width())+ 'px');
+				*/
+				let scale = Main.layoutManager.monitors[this.monitorIndex].width / Main.layoutManager.primaryMonitor.width;
+				let size = (MIN_TASKS_PER_WORKSPACE * scale) - task_total;
+				console.log("min tasks scale:" + scale + "  to " + size);
+				// for dynamic workspaces, make the last entry a + when inactive.
+				if (this._is_ws_dynamic && task_total == 0 && this.active_ws_index != ws_index && ws_index == WM.n_workspaces - 1) {
+					size = 0;
+					ws_box_label.set_text("    +    ");
+				}
+				this._create_workspace_seperator(ws_index, size, button_type);
+			} else {
+				let size = MIN_TASKS_PER_WORKSPACE - task_total;
+				// for dynamic workspaces, make the last entry a + when inactive.
+				if (this._is_ws_dynamic && task_total == 0 && this.active_ws_index != ws_index  && ws_index == WM.n_workspaces -1) {
+					size = 0;
+					ws_box_label.set_text("    +    ");
+				}
+				this._create_workspace_seperator(ws_index, size, button_type);
 			}
-			this._create_workspace_seperator(ws_index, size, button_type);
 		}
 		if (ALL_WORKSPACES_LABEL) {
 			let ws_box = new WorkspaceButton();
 			ws_box.number = -1;
-			let ws_box_label = new St.Label({ y_align: Clutter.ActorAlign.CENTER });
+			let ws_box_label = new St.Label({ y_align: Clutter.ActorAlign.CENTER, x_expand: false });
 			ws_box_label.style_class = 'workspace-inactive-' + button_type;
 			ws_box.style_class = 'workspace-box-inactive-' + button_type;
 			ws_box_label.set_text(" " + ALL_WORKSPACES_LABEL + " ");
@@ -1149,6 +1180,7 @@ export default class BabarExtension extends Extension {
 		DISPLAY_DASH = this.settings.get_boolean('display-dash');
 		DISPLAY_WORKSPACES_THUMBNAILS = this.settings.get_boolean('display-workspaces-thumbnails');
 		MIN_TASKS_PER_WORKSPACE = this.settings.get_int('min-tasks-per-workspace');
+		MIN_WORKSPACE_SIZE_PERCENT = this.settings.get_double('min-workspace-size-percent');
 		ALL_WORKSPACES_LABEL = this.settings.get_string('all-workspaces-label');
     }
     
@@ -1228,7 +1260,7 @@ export default class BabarExtension extends Extension {
 	_connectExtensionSignals() {
 		const dtpActive = this._isExtensionActive(DASH_TO_PANEL_UUID);
 		if (dtpActive && global.dashToPanel)
-			global.dashToPanel._panelsCreatedId = global.dashToPanel.connect('panels-created', () => this._reload());
+			global.dashToPanel._panelsCreatedId = global.dashToPanel.connect('panels-created', () => this._reloadPanelChanges());
 	}
 
 	_disconnectExtensionSignals() {
